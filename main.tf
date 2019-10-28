@@ -64,7 +64,9 @@ resource "aws_instance" "f5_bigip" {
   ami                  = data.aws_ami.f5_ami.id
   iam_instance_profile = aws_iam_instance_profile.bigip_profile.name
 
-  key_name = var.ec2_key_name
+  key_name      = var.ec2_key_name
+  
+  ebs_optimized = true
 
   root_block_device {
     delete_on_termination = true
