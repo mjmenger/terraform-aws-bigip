@@ -1,7 +1,5 @@
 provider "aws" {
   region = local.region
-  # access_key = var.AccessKeyID
-  # secret_key = var.SecretAccessKey
 }
 
 #
@@ -49,6 +47,15 @@ module "vpc" {
     cidrsubnet(local.cidr, 8, num)
   ]
 
+  # using the database subnet method since it allows a public route
+  database_subnets = [
+    for num in range(length(local.azs)) :
+    cidrsubnet(local.cidr, 8, num + 10)
+  ]
+  create_database_subnet_group           = true
+  create_database_subnet_route_table     = true
+  create_database_internet_gateway_route = true
+
   tags = {
     Name        = format("%s-vpc-%s", local.prefix, random_id.id.hex)
     Terraform   = "true"
@@ -83,19 +90,6 @@ module "web_server_secure_sg" {
 }
 
 #
-# Create a security group for port 8443 traffic
-#
-module "bigip_mgmt_secure_sg" {
-  source = "terraform-aws-modules/security-group/aws//modules/https-8443"
-
-  name        = format("%s-bigip-mgmt-%s", local.prefix, random_id.id.hex)
-  description = "Security group for BIG-IP MGMT Interface"
-  vpc_id      = module.vpc.vpc_id
-
-  ingress_cidr_blocks = [local.allowed_mgmt_cidr]
-}
-
-#
 # Create a security group for SSH traffic
 #
 module "ssh_secure_sg" {
@@ -115,20 +109,26 @@ module bigip {
   source = "../../"
 
   prefix = format(
-    "%s-bigip-1-nic_with_new_vpc-%s",
+    "%s-bigip-2-nic_with_new_vpc-%s",
     local.prefix,
     random_id.id.hex
   )
   f5_instance_count           = length(local.azs)
+  ec2_instance_type           = "m5.large"
   ec2_key_name                = var.ec2_key_name
   aws_secretmanager_secret_id = aws_secretsmanager_secret.bigip.id
   mgmt_subnet_security_group_ids = [
-    module.web_server_sg.this_security_group_id,
     module.web_server_secure_sg.this_security_group_id,
-    module.ssh_secure_sg.this_security_group_id,
-    module.bigip_mgmt_secure_sg.this_security_group_id
+    module.ssh_secure_sg.this_security_group_id
   ]
-  vpc_mgmt_subnet_ids = module.vpc.public_subnets
+
+  public_subnet_security_group_ids = [
+    module.web_server_sg.this_security_group_id,
+    module.web_server_secure_sg.this_security_group_id
+  ]
+
+  vpc_public_subnet_ids = module.vpc.public_subnets
+  vpc_mgmt_subnet_ids   = module.vpc.database_subnets
 }
 
 #
@@ -137,7 +137,7 @@ module bigip {
 locals {
   prefix            = "tf-aws-bigip"
   region            = "us-east-2"
-  azs               = ["us-east-2a", "us-east-2b"]
+  azs               = [format("%s%s", local.region, "a"), format("%s%s", local.region, "b")]
   cidr              = "10.0.0.0/16"
   allowed_mgmt_cidr = "0.0.0.0/0"
   allowed_app_cidr  = "0.0.0.0/0"

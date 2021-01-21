@@ -14,7 +14,7 @@ data "aws_ami" "f5_ami" {
 
   filter {
     name   = "name"
-    values = ["${var.f5_ami_search_name}"]
+    values = [var.f5_ami_search_name]
   }
 }
 
@@ -40,9 +40,10 @@ resource "aws_eip" "mgmt" {
 # Create Public Network Interfaces
 #
 resource "aws_network_interface" "public" {
-  count           = length(var.vpc_public_subnet_ids)
-  subnet_id       = var.vpc_public_subnet_ids[count.index]
-  security_groups = var.public_subnet_security_group_ids
+  count             = length(var.vpc_public_subnet_ids)
+  subnet_id         = var.vpc_public_subnet_ids[count.index]
+  security_groups   = var.public_subnet_security_group_ids
+  private_ips_count = var.application_endpoint_count
 }
 
 # 
@@ -109,6 +110,7 @@ resource "aws_instance" "f5_bigip" {
     {
       DO_URL      = var.DO_URL,
       AS3_URL     = var.AS3_URL,
+      TS_URL      = var.TS_URL,
       libs_dir    = var.libs_dir,
       onboard_log = var.onboard_log,
       secret_id   = var.aws_secretmanager_secret_id
